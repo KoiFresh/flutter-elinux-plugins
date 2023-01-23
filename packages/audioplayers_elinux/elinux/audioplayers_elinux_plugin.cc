@@ -109,6 +109,21 @@ namespace {
     } // HandleMethodCall
 }  // namespace
 
+template<typename T>
+T get_args_value(const flutter::EncodableValue* args, std::string key, T default_value) {
+    const flutter::EncodableValue& fl_args = *args;
+
+    if(std::holds_alternative<flutter::EncodableMap>(fl_args)) {
+        flutter::EncodableMap map = std::get<flutter::EncodableMap>(fl_args);
+        flutter::EncodableValue& fl_key = map[flutter::EncodableValue(key)];
+
+        if(std::holds_alternative<T>(fl_key)) {
+            return std::get<T>(fl_key);
+        }
+    }
+    return default_value;
+}
+
 void AudioplayersElinuxPlugin::HandleSetSourceUrlCall(const flutter::EncodableValue* message, std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {
     result->NotImplemented();
 }
