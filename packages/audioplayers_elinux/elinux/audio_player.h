@@ -6,20 +6,20 @@
 #include <flutter/standard_method_codec.h>
 
 // STL headers
-#include <variant>
 #include <functional>
 #include <map>
 #include <memory>
 #include <sstream>
 #include <string>
+#include <variant>
 
 extern "C" {
 #include <gst/gst.h>
 }
 
 class AudioPlayer {
-public:
-    AudioPlayer(std::string id, flutter::MethodChannel<flutter::EncodableValue>* channel);
+   public:
+    AudioPlayer(std::string id, flutter::MethodChannel<flutter::EncodableValue> *channel);
 
     virtual ~AudioPlayer();
 
@@ -49,7 +49,7 @@ public:
 
     void SetSourceUrl(std::string url);
 
-private:
+   private:
     // Gst members
     GstElement *playbin;
     GstElement *source;
@@ -61,14 +61,14 @@ private:
     bool _isLooping = false;
     bool _isSeekCompleted = true;
     double _playbackRate = 1.0;
-    
-    std::string _url {};
+
+    std::string _url{};
     std::string _id;
-    flutter::MethodChannel<flutter::EncodableValue>* _channel;
+    flutter::MethodChannel<flutter::EncodableValue> *_channel;
 
     static void SourceSetup(GstElement *playbin, GstElement *source, GstElement **p_src);
 
-    static gboolean OnBusMessage(GstBus *bus, GstMessage *message, AudioPlayer *data);
+    static gboolean OnBusMessage(GstBus *bus, GstMessage *message, void *data);
 
     static gboolean OnRefresh(AudioPlayer *data);
 
