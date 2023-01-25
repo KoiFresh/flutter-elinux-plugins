@@ -30,6 +30,8 @@ T get_args_value(const flutter::EncodableValue* args, std::string key, T default
     return default_value;
 }
 
+static std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> channel;
+
 namespace {
 
     constexpr char kAudioplayersChannelName[] = "xyz.luan/audioplayers";
@@ -80,7 +82,7 @@ namespace {
 
     // static
     void AudioplayersElinuxPlugin::RegisterWithRegistrar(flutter::PluginRegistrar *registrar) {
-        auto channel = std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(registrar->messenger(), kAudioplayersChannelName, &flutter::StandardMethodCodec::GetInstance());
+        channel = std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(registrar->messenger(), kAudioplayersChannelName, &flutter::StandardMethodCodec::GetInstance());
 
         auto plugin = std::make_unique<AudioplayersElinuxPlugin>();
 
@@ -119,7 +121,7 @@ namespace {
             HandleReleaseCall(player, method_call.arguments(), std::move(result));
 
         } else if (method_call.method_name().compare(kAudioplayersChannelApiSeek) == 0) {
-            HandleReleaseCall(player, method_call.arguments(), std::move(result));
+            HandleSeekCall(player, method_call.arguments(), std::move(result));
 
         } else if (method_call.method_name().compare(kAudioplayersChannelApiSetSourceUrl) == 0) {
             HandleSetSourceUrlCall(player, method_call.arguments(), std::move(result));
@@ -160,33 +162,33 @@ AudioPlayer* AudioplayersElinuxPlugin::GetPlayerById(std::string id) {
         return searchPlayer->second.get();
     } 
 
-    auto player = std::make_unique<AudioPlayer>(id);
+    auto player = std::make_unique<AudioPlayer>(id, channel.get());
     auto playerPtr = player.get();
     audioPlayers.insert(std::make_pair(id, std::move(player)));
 
     return playerPtr;
 }
 
-void AudioplayersElinuxPlugin::HandlePauseCall(AudioPlayer* player, const flutter::EncodableValue* message, std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {
+void AudioplayersElinuxPlugin::HandlePauseCall(AudioPlayer* player, const flutter::EncodableValue* message, std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {    
     player->Pause();
 
     result->Success(flutter::EncodableValue(1)); // success
 }
 
-void AudioplayersElinuxPlugin::HandleResumeCall(AudioPlayer* player, const flutter::EncodableValue* message, std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {
+void AudioplayersElinuxPlugin::HandleResumeCall(AudioPlayer* player, const flutter::EncodableValue* message, std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {    
     player->Resume();
 
     result->Success(flutter::EncodableValue(1)); // success
 }
 
-void AudioplayersElinuxPlugin::HandleStopCall(AudioPlayer* player, const flutter::EncodableValue* message, std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {
+void AudioplayersElinuxPlugin::HandleStopCall(AudioPlayer* player, const flutter::EncodableValue* message, std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {    
     player->Pause();
     player->SetPosition(0);
 
     result->Success(flutter::EncodableValue(1)); // success
 }
 
-void AudioplayersElinuxPlugin::HandleReleaseCall(AudioPlayer* player, const flutter::EncodableValue* message, std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {
+void AudioplayersElinuxPlugin::HandleReleaseCall(AudioPlayer* player, const flutter::EncodableValue* message, std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {    
     player->Pause();
     player->SetPosition(0);
 
@@ -230,27 +232,27 @@ void AudioplayersElinuxPlugin::HandleGetDurationCall(AudioPlayer* player, const 
     result->Success(flutter::EncodableValue(duration)); // success
 }
 
-void AudioplayersElinuxPlugin::HandleSetVolumeCall(AudioPlayer* player, const flutter::EncodableValue* message, std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {
+void AudioplayersElinuxPlugin::HandleSetVolumeCall(AudioPlayer* player, const flutter::EncodableValue* message, std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {    
     double volume = get_args_value<double>(message, "volume", 1.0);
     player->SetVolume(volume);
 
     result->Success(flutter::EncodableValue(1)); // success
 }
 
-void AudioplayersElinuxPlugin::HandleGetCurrentPositionCall(AudioPlayer* player, const flutter::EncodableValue* message, std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {
+void AudioplayersElinuxPlugin::HandleGetCurrentPositionCall(AudioPlayer* player, const flutter::EncodableValue* message, std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {    
     int64_t position = player->GetPosition();
 
     result->Success(flutter::EncodableValue(position)); // success
 }
 
-void AudioplayersElinuxPlugin::HandleSetPlaybackRateCall(AudioPlayer* player, const flutter::EncodableValue* message, std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {
+void AudioplayersElinuxPlugin::HandleSetPlaybackRateCall(AudioPlayer* player, const flutter::EncodableValue* message, std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {    
     double rate = get_args_value<double>(message, "playbackRate", 1.0);
     player->SetPlaybackRate(rate);
 
     result->Success(flutter::EncodableValue(1)); // success
 }
 
-void AudioplayersElinuxPlugin::HandleSetReleaseModeCall(AudioPlayer* player, const flutter::EncodableValue* message, std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {
+void AudioplayersElinuxPlugin::HandleSetReleaseModeCall(AudioPlayer* player, const flutter::EncodableValue* message, std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {    
     std::string releaseMode = get_args_value<std::string>(message, "releaseMode", "");
     
     if (releaseMode.empty()) {
