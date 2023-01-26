@@ -68,7 +68,7 @@ class AudioPlayer {
 
     static void SourceSetup(GstElement *playbin, GstElement *source, GstElement **p_src);
 
-    static gboolean OnBusMessage(GstBus *bus, GstMessage *message, void *data);
+    static GstBusSyncReply OnBusMessage(GstBus *bus, GstMessage *message, gpointer data);
 
     static gboolean OnRefresh(AudioPlayer *data);
 

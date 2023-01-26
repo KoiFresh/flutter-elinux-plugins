@@ -8,8 +8,6 @@ AudioPlayer::AudioPlayer(std::string id, flutter::MethodChannel<flutter::Encodab
     if (!playbin) {
         Logger::Error(std::string("Not all elements could be created."));
         return;
-    } else {
-        Logger::Error(std::string("--Initialized new Playbin"));
     }
 
     // Setup stereo balance controller
@@ -37,11 +35,11 @@ AudioPlayer::AudioPlayer(std::string id, flutter::MethodChannel<flutter::Encodab
     bus = gst_element_get_bus(playbin);
 
     // Watch bus messages for one time events
-    gst_bus_add_watch(bus, OnBusMessage, this);
-    // gst_bus_set_sync_handler(bus, OnBusMessage, this, NULL);
+    gst_bus_set_sync_handler(bus, OnBusMessage, this, NULL);
 
     // Refresh continuously to emit reoccurring events
     // g_timeout_add(1000, (GSourceFunc)AudioPlayer::OnRefresh, this);
+    // TODO: update position, from calling OnRefresh repeadly
 }
 
 AudioPlayer::~AudioPlayer() {}
@@ -53,7 +51,7 @@ int64_t AudioPlayer::GetPosition() {
     gint64 current = 0;
     if (!gst_element_query_position(playbin, GST_FORMAT_TIME, &current)) {
         Logger::Error(std::string("Could not query current position."));
-        return 0;
+        return -1;
     }
     return current / 1000000;
 }
@@ -65,7 +63,7 @@ int64_t AudioPlayer::GetDuration() {
     gint64 duration = 0;
     if (!gst_element_query_duration(playbin, GST_FORMAT_TIME, &duration)) {
         Logger::Error(std::string("Could not query current duration."));
-        return 0;
+        return -1;
     }
     return duration / 1000000;
 }
@@ -81,8 +79,7 @@ void AudioPlayer::Pause() {
     _isPlaying = false;
     GstStateChangeReturn ret = gst_element_set_state(playbin, GST_STATE_PAUSED);
     if (ret == GST_STATE_CHANGE_FAILURE) {
-        Logger::Error(
-            std::string("Unable to set the pipeline to the paused state."));
+        Logger::Error(std::string("Unable to set the pipeline to the paused state."));
         return;
     }
     OnPositionUpdate();  // Update to exact position when pausing
@@ -181,7 +178,7 @@ void AudioPlayer::SourceSetup(GstElement *playbin, GstElement *source, GstElemen
 }
 
 // static
-gboolean AudioPlayer::OnBusMessage(GstBus *bus, GstMessage *message, void *user_data) {
+GstBusSyncReply AudioPlayer::OnBusMessage(GstBus *bus, GstMessage *message, gpointer user_data) {
     AudioPlayer *data = reinterpret_cast<AudioPlayer *>(user_data);
 
     switch (GST_MESSAGE_TYPE(message)) {
@@ -199,18 +196,22 @@ gboolean AudioPlayer::OnBusMessage(GstBus *bus, GstMessage *message, void *user_
             GstState old_state, new_state;
 
             gst_message_parse_state_changed(message, &old_state, &new_state, NULL);
-            data->OnMediaStateChange(message->src, &old_state, &new_state);
+            // will eventually call play, or pause, which will update the players state, which is not
+            // possible in a sync call
+            // data->OnMediaStateChange(message->src, &old_state, &new_state);
             break;
         case GST_MESSAGE_EOS:
-            gst_element_set_state(data->playbin, GST_STATE_READY);
-            data->OnPlaybackEnded();
+            // also update players state in sync call is not possible
+            // gst_element_set_state(data->playbin, GST_STATE_READY);
+            // data->OnPlaybackEnded();
             break;
         case GST_MESSAGE_DURATION_CHANGED:
             data->OnDurationUpdate();
             break;
         case GST_MESSAGE_ASYNC_DONE:
             if (!data->_isSeekCompleted) {
-                data->OnSeekCompleted();
+                // leads to crash
+                // data->OnSeekCompleted();
                 data->_isSeekCompleted = true;
             }
             break;
@@ -221,7 +222,7 @@ gboolean AudioPlayer::OnBusMessage(GstBus *bus, GstMessage *message, void *user_
     }
 
     // Continue watching for messages
-    return TRUE;
+    return GST_BUS_PASS;
 }
 
 // Compare with refresh_ui in
@@ -254,7 +255,7 @@ void AudioPlayer::SetPlayback(int64_t seekTo, double rate) {
     if (_playbackRate != rate) {
         _playbackRate = rate;
     }
-    // _isSeekCompleted = false;
+    _isSeekCompleted = false;
 
     GstEvent *seek_event;
     if (rate > 0) {
