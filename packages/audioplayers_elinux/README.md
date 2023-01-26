@@ -1,18 +1,39 @@
 # audioplayers_elinux
 
-A new Flutter plugin project.
+The implementation of the audioplayers plugin for flutter elinux. APIs are designed to be API compatible with the the original [`audioplayers`](https://github.com/bluefireteam/audioplayers) plugin.
 
-## Getting Started
+## Required libraries
 
-This project is a starting point for a Flutter
-[plug-in package](https://flutter.dev/developing-packages/),
-a specialized package that includes platform-specific implementation code for
-Android and/or iOS.
+This plugin uses [GStreamer](https://gstreamer.freedesktop.org/) internally.
 
-For help getting started with Flutter development, view the
-[online documentation](https://flutter.dev/docs), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+```Shell
+$ sudo apt install libgstreamer1.0-dev
 
-The plugin project was generated without specifying the `--platforms` flag, no platforms are currently supported.
-To add platforms, run `flutter create -t plugin --platforms <platforms> .` in this directory.
-You can also find a detailed instruction on how to add platforms in the `pubspec.yaml` at https://flutter.dev/docs/development/packages-and-plugins/developing-packages#plugin-platforms.
+$ sudo apt install libgstreamer-plugins-base1.0-dev \
+    gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
+    gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-libav
+```
+
+## Usage
+
+### pubspec.yaml
+
+```yaml
+dependencies:
+  audioplayers: ^3.0.0
+  camera_elinux:
+    git:
+      url: https://github.com/KoiFresh/flutter-elinux-plugins.git
+      path: packages/audioplayers_elinux
+      ref: feature/audioplayers
+```
+
+### Source code
+
+Import `audioplayers` in your Dart code:
+
+See also: https://github.com/bluefireteam/audioplayers/blob/main/packages/audioplayers/example/lib/main.dart
+
+```dart
+import 'package:audioplayers/audioplayers.dart';
+```

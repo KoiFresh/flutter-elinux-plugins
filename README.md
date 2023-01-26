@@ -13,13 +13,14 @@ This repo is a companion repo to the [flutter-elinux](https://github.com/sony/fl
 
 The plugins for elinux are basically designed to be API compatible with the official Flutter plugins and others. Therefore, developers can use these plugins like other platforms (Android, iOS, etc.).
 
-| Package for eLinux | Frontend package |
-| ------------------ | ---------------- |
-| [video_player_elinux](packages/video_player) | [video_player](https://github.com/flutter/plugins/tree/master/packages/video_player) |
-| [camera_elinux](packages/camera) | [camera](https://github.com/flutter/plugins/tree/master/packages/camera) |
-| [path_provider_elinux](packages/path_provider) | [path_provider](https://github.com/flutter/plugins/tree/master/packages/path_provider) |
+| Package for eLinux                                       | Frontend package                                                                                 |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| [video_player_elinux](packages/video_player)             | [video_player](https://github.com/flutter/plugins/tree/master/packages/video_player)             |
+| [camera_elinux](packages/camera)                         | [camera](https://github.com/flutter/plugins/tree/master/packages/camera)                         |
+| [path_provider_elinux](packages/path_provider)           | [path_provider](https://github.com/flutter/plugins/tree/master/packages/path_provider)           |
 | [shared_preferences_elinux](packages/shared_preferences) | [shared_preferences](https://github.com/flutter/plugins/tree/master/packages/shared_preferences) |
-| [joystick](packages/joystick) | - |
+| [joystick](packages/joystick)                            | -                                                                                                |
+| [audioplayers_elinux](packages/audioplayers_elinux)      |  [audioplayers](https://github.com/bluefireteam/audioplayers/tree/main/packages)                 |
 
 ## Getting Started
 
