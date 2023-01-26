@@ -49,6 +49,8 @@ class AudioPlayer {
 
     void SetSourceUrl(std::string url);
 
+    static gboolean OnRefresh(AudioPlayer *data);
+
    private:
     // Gst members
     GstElement *playbin;
@@ -69,8 +71,6 @@ class AudioPlayer {
     static void SourceSetup(GstElement *playbin, GstElement *source, GstElement **p_src);
 
     static GstBusSyncReply OnBusMessage(GstBus *bus, GstMessage *message, gpointer data);
-
-    static gboolean OnRefresh(AudioPlayer *data);
 
     void SetPlayback(int64_t seekTo, double rate);
 
