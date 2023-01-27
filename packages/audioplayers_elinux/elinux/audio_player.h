@@ -9,6 +9,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <queue>
 #include <sstream>
 #include <string>
 #include <variant>
@@ -16,6 +17,11 @@
 extern "C" {
 #include <gst/gst.h>
 }
+
+struct event {
+    std::string function;
+    flutter::EncodableValue value;
+};
 
 class AudioPlayer {
    public:
@@ -49,14 +55,13 @@ class AudioPlayer {
 
     void SetSourceUrl(std::string url);
 
-    static gboolean OnRefresh(AudioPlayer *data);
-
    private:
     // Gst members
     GstElement *playbin;
     GstElement *source;
     GstElement *panorama;
     GstBus *bus;
+    std::queue<event> event_queue;
 
     bool _isInitialized = false;
     bool _isPlaying = false;
@@ -70,7 +75,12 @@ class AudioPlayer {
 
     static void SourceSetup(GstElement *playbin, GstElement *source, GstElement **p_src);
 
-    static GstBusSyncReply OnBusMessage(GstBus *bus, GstMessage *message, gpointer data);
+    // static GstBusSyncReply OnBusMessage(GstBus *bus, GstMessage *message, gpointer data);
+    static gboolean OnBusMessage(GstBus *bus, GstMessage *message, gpointer data);
+
+    static gboolean DispatchEventQueue(gpointer user_data);
+
+    static gboolean OnRefresh(gpointer user_data);
 
     void SetPlayback(int64_t seekTo, double rate);
 
@@ -85,4 +95,6 @@ class AudioPlayer {
     void OnSeekCompleted();
 
     void OnPlaybackEnded();
+
+    void InvokeLater(std::string name, flutter::EncodableValue value);
 };

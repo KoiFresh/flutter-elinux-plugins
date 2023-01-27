@@ -35,11 +35,12 @@ AudioPlayer::AudioPlayer(std::string id, flutter::MethodChannel<flutter::Encodab
     bus = gst_element_get_bus(playbin);
 
     // Watch bus messages for one time events
-    gst_bus_set_sync_handler(bus, OnBusMessage, this, NULL);
+    gst_bus_add_watch(bus, OnBusMessage, this);
 
     // Refresh continuously to emit reoccurring events
-    // g_timeout_add(1000, (GSourceFunc)AudioPlayer::OnRefresh, this);
-    // TODO: update position, from calling OnRefresh repeadly
+    g_timeout_add(1000, (GSourceFunc)AudioPlayer::OnRefresh, this);
+    // Dispatch enqued events every time out loop is running
+    g_timeout_add(0, AudioPlayer::DispatchEventQueue, this);
 }
 
 AudioPlayer::~AudioPlayer() {}
@@ -87,10 +88,9 @@ void AudioPlayer::Pause() {
 
 void AudioPlayer::Resume() {
     _isPlaying = true;
-    /* if (!_isInitialized)
-    {
+    if (!_isInitialized) {
         return;
-    }*/
+    }
     GstStateChangeReturn ret = gst_element_set_state(playbin, GST_STATE_PLAYING);
     if (ret == GST_STATE_CHANGE_FAILURE) {
         Logger::Error(std::string("Unable to set the pipeline to the playing state."));
@@ -147,10 +147,9 @@ void AudioPlayer::SetPlaybackRate(double rate) {
 }
 
 void AudioPlayer::SetPosition(int64_t position) {
-    /*if (!_isInitialized)
-    {
+    if (!_isInitialized) {
         return;
-    }*/
+    }
     SetPlayback(position, _playbackRate);
 }
 
@@ -178,8 +177,8 @@ void AudioPlayer::SourceSetup(GstElement *playbin, GstElement *source, GstElemen
 }
 
 // static
-GstBusSyncReply AudioPlayer::OnBusMessage(GstBus *bus, GstMessage *message, gpointer user_data) {
-    AudioPlayer *data = reinterpret_cast<AudioPlayer *>(user_data);
+gboolean AudioPlayer::OnBusMessage(GstBus *bus, GstMessage *message, gpointer user_data) {
+    AudioPlayer *self = reinterpret_cast<AudioPlayer *>(user_data);
 
     switch (GST_MESSAGE_TYPE(message)) {
         case GST_MESSAGE_ERROR: {
@@ -187,7 +186,7 @@ GstBusSyncReply AudioPlayer::OnBusMessage(GstBus *bus, GstMessage *message, gpoi
             gchar *debug;
 
             gst_message_parse_error(message, &err, &debug);
-            data->OnMediaError(err, debug);
+            self->OnMediaError(err, debug);
             g_error_free(err);
             g_free(debug);
             break;
@@ -196,23 +195,19 @@ GstBusSyncReply AudioPlayer::OnBusMessage(GstBus *bus, GstMessage *message, gpoi
             GstState old_state, new_state;
 
             gst_message_parse_state_changed(message, &old_state, &new_state, NULL);
-            // will eventually call play, or pause, which will update the players state, which is not
-            // possible in a sync call
-            // data->OnMediaStateChange(message->src, &old_state, &new_state);
+            self->OnMediaStateChange(message->src, &old_state, &new_state);
             break;
         case GST_MESSAGE_EOS:
-            // also update players state in sync call is not possible
-            // gst_element_set_state(data->playbin, GST_STATE_READY);
-            // data->OnPlaybackEnded();
+            gst_element_set_state(self->playbin, GST_STATE_READY);
+            self->OnPlaybackEnded();
             break;
         case GST_MESSAGE_DURATION_CHANGED:
-            data->OnDurationUpdate();
+            self->OnDurationUpdate();
             break;
         case GST_MESSAGE_ASYNC_DONE:
-            if (!data->_isSeekCompleted) {
-                // leads to crash
-                // data->OnSeekCompleted();
-                data->_isSeekCompleted = true;
+            if (!self->_isSeekCompleted) {
+                self->OnSeekCompleted();
+                self->_isSeekCompleted = true;
             }
             break;
         default:
@@ -222,25 +217,38 @@ GstBusSyncReply AudioPlayer::OnBusMessage(GstBus *bus, GstMessage *message, gpoi
     }
 
     // Continue watching for messages
-    return GST_BUS_PASS;
+    return TRUE;
+}
+
+gboolean AudioPlayer::DispatchEventQueue(gpointer user_data) {
+    AudioPlayer *self = reinterpret_cast<AudioPlayer *>(user_data);
+
+    for (int i = 0; i < self->event_queue.size(); i++) {
+        struct event event = self->event_queue.front();
+        self->_channel->InvokeMethod(event.function, std::make_unique<flutter::EncodableValue>(event.value));
+        self->event_queue.pop();
+    }
+
+    return G_SOURCE_CONTINUE;
 }
 
 // Compare with refresh_ui in
 // https://gstreamer.freedesktop.org/documentation/tutorials/basic/toolkit-integration.html?gi-language=c#walkthrough
 // static
-gboolean AudioPlayer::OnRefresh(AudioPlayer *data) {
+gboolean AudioPlayer::OnRefresh(gpointer user_data) {
+    AudioPlayer *self = reinterpret_cast<AudioPlayer *>(user_data);
+
     // We do not want to update anything unless we are in the PAUSED or PLAYING states
-    if (data->playbin->current_state == GST_STATE_PLAYING) {
-        data->OnPositionUpdate();
+    if (self->playbin->current_state == GST_STATE_PLAYING) {
+        self->OnPositionUpdate();
     }
-    return TRUE;
+    return G_SOURCE_CONTINUE;
 }
 
 void AudioPlayer::SetPlayback(int64_t seekTo, double rate) {
-    /* if (!_isInitialized)
-    {
+    if (!_isInitialized) {
         return;
-    }*/
+    }
     // See:
     // https://gstreamer.freedesktop.org/documentation/tutorials/basic/playback-speed.html?gi-language=c
     if (!_isSeekCompleted) {
@@ -274,12 +282,14 @@ void AudioPlayer::OnMediaError(GError *error, gchar *debug) {
     oss << "Error: " << error->code << "; message=" << error->message;
     g_print("%s\n", oss.str().c_str());
     if (this->_channel) {
-        flutter::EncodableMap map = flutter::EncodableMap{
+        flutter::EncodableValue map = flutter::EncodableValue(flutter::EncodableMap{
             {flutter::EncodableValue("playerId"), flutter::EncodableValue(_id.c_str())},
-            {flutter::EncodableValue("value"), flutter::EncodableValue(oss.str().c_str())}};
+            {flutter::EncodableValue("value"), flutter::EncodableValue(oss.str().c_str())}});
 
         std::unique_ptr<flutter::EncodableValue> arguments = std::make_unique<flutter::EncodableValue>(map);
-        this->_channel->InvokeMethod("audio.onError", std::move(arguments));
+
+        InvokeLater("audio.onError", map);
+        // this->_channel->InvokeMethod("audio.onError", std::move(arguments));
     }
 }
 
@@ -302,23 +312,25 @@ void AudioPlayer::OnMediaStateChange(GstObject *src, GstState *old_state, GstSta
 
 void AudioPlayer::OnPositionUpdate() {
     if (this->_channel) {
-        flutter::EncodableMap map = flutter::EncodableMap{
+        flutter::EncodableValue map = flutter::EncodableValue(flutter::EncodableMap{
             {flutter::EncodableValue("playerId"), flutter::EncodableValue(_id.c_str())},
-            {flutter::EncodableValue("value"), flutter::EncodableValue(GetPosition())}};
+            {flutter::EncodableValue("value"), flutter::EncodableValue(GetPosition())}});
 
         std::unique_ptr<flutter::EncodableValue> arguments = std::make_unique<flutter::EncodableValue>(map);
-        this->_channel->InvokeMethod("audio.onCurrentPosition", std::move(arguments));
+        InvokeLater("audio.onCurrentPosition", map);
+        // this->_channel->InvokeMethod("audio.onCurrentPosition", std::move(arguments));
     }
 }
 
 void AudioPlayer::OnDurationUpdate() {
     if (this->_channel) {
-        flutter::EncodableMap map = flutter::EncodableMap{
+        flutter::EncodableValue map = flutter::EncodableValue(flutter::EncodableMap{
             {flutter::EncodableValue("playerId"), flutter::EncodableValue(_id.c_str())},
-            {flutter::EncodableValue("value"), flutter::EncodableValue(GetDuration())}};
+            {flutter::EncodableValue("value"), flutter::EncodableValue(GetDuration())}});
 
         std::unique_ptr<flutter::EncodableValue> arguments = std::make_unique<flutter::EncodableValue>(map);
-        this->_channel->InvokeMethod("audio.onDuration", std::move(arguments));
+        InvokeLater("audio.onDuration", map);
+        // this->_channel->InvokeMethod("audio.onDuration", std::move(arguments));
     }
 }
 
@@ -326,12 +338,13 @@ void AudioPlayer::OnSeekCompleted() {
     if (this->_channel) {
         OnPositionUpdate();
 
-        flutter::EncodableMap map = flutter::EncodableMap{
+        flutter::EncodableValue map = flutter::EncodableValue(flutter::EncodableMap{
             {flutter::EncodableValue("playerId"), flutter::EncodableValue(_id.c_str())},
-            {flutter::EncodableValue("value"), flutter::EncodableValue(true)}};
+            {flutter::EncodableValue("value"), flutter::EncodableValue(true)}});
 
         std::unique_ptr<flutter::EncodableValue> arguments = std::make_unique<flutter::EncodableValue>(map);
-        this->_channel->InvokeMethod("audio.onSeekComplete", std::move(arguments));
+        InvokeLater("audio.onSeekComplete", map);
+        // this->_channel->InvokeMethod("audio.onSeekComplete", std::move(arguments));
     }
 }
 
@@ -341,11 +354,20 @@ void AudioPlayer::OnPlaybackEnded() {
         Play();
     }
     if (this->_channel) {
-        flutter::EncodableMap map = flutter::EncodableMap{
+        flutter::EncodableValue map = flutter::EncodableValue(flutter::EncodableMap{
             {flutter::EncodableValue("playerId"), flutter::EncodableValue(_id.c_str())},
-            {flutter::EncodableValue("value"), flutter::EncodableValue(true)}};
+            {flutter::EncodableValue("value"), flutter::EncodableValue(true)}});
 
         std::unique_ptr<flutter::EncodableValue> arguments = std::make_unique<flutter::EncodableValue>(map);
-        this->_channel->InvokeMethod("audio.onComplete", std::move(arguments));
+        InvokeLater("audio.onComplete", map);
+        // this->_channel->InvokeMethod("audio.onComplete", std::move(arguments));
     }
+}
+
+void AudioPlayer::InvokeLater(std::string name, flutter::EncodableValue value) {
+    struct event e;
+    e.function = name;
+    e.value = std::move(value);
+
+    event_queue.push(e);
 }

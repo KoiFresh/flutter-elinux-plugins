@@ -31,8 +31,13 @@ T get_args_value(const flutter::EncodableValue* args, std::string key, T default
 }
 
 static std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> channel;
+static std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> globalChannel;
 
 namespace {
+
+constexpr char kAudioplayersGlobalChannelName[] = "xyz.luan/audioplayers.global";
+constexpr char kAudioplayersGlobalChannelApiLoop[] = "loop";
+constexpr char kAudioplayersGlobalChannelApiChangeLogLevel[] = "changeLogLevel";
 
 constexpr char kAudioplayersChannelName[] = "xyz.luan/audioplayers";
 constexpr char kAudioplayersChannelApiPause[] = "pause";
@@ -62,6 +67,13 @@ class AudioplayersElinuxPlugin : public flutter::Plugin {
 
     AudioPlayer* GetPlayerById(std::string id);
 
+    GMainLoop* loop;
+
+    void HandleGlobalMethodCall(const flutter::MethodCall<flutter::EncodableValue>& method_call, std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result);
+
+    void HandleGlobalLoopCall(const flutter::EncodableValue* message, std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result);
+    void HandleGlobalChangeLogLevelCall(const flutter::EncodableValue* message, std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result);
+
     // Called when a method is called on this plugin's channel from Dart.
     void HandleMethodCall(const flutter::MethodCall<flutter::EncodableValue>& method_call, std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result);
 
@@ -83,29 +95,69 @@ class AudioplayersElinuxPlugin : public flutter::Plugin {
 void AudioplayersElinuxPlugin::RegisterWithRegistrar(flutter::PluginRegistrar* registrar) {
     channel = std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(registrar->messenger(), kAudioplayersChannelName, &flutter::StandardMethodCodec::GetInstance());
 
+    globalChannel = std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(registrar->messenger(), kAudioplayersGlobalChannelName, &flutter::StandardMethodCodec::GetInstance());
+
     auto plugin = std::make_unique<AudioplayersElinuxPlugin>();
 
     channel->SetMethodCallHandler([plugin_pointer = plugin.get()](const auto& call, auto result) {
         plugin_pointer->HandleMethodCall(call, std::move(result));
     });
 
+    globalChannel->SetMethodCallHandler([plugin_pointer = plugin.get()](const auto& call, auto result) {
+        plugin_pointer->HandleGlobalMethodCall(call, std::move(result));
+    });
+
     registrar->AddPlugin(std::move(plugin));
 }
 
-AudioplayersElinuxPlugin::AudioplayersElinuxPlugin() {}
+AudioplayersElinuxPlugin::AudioplayersElinuxPlugin() {
+    loop = g_main_loop_new(NULL, false);
+}
 
 AudioplayersElinuxPlugin::~AudioplayersElinuxPlugin() {}
 
-void AudioplayersElinuxPlugin::HandleMethodCall(const flutter::MethodCall<flutter::EncodableValue>& method_call, std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {
-    if (method_call.method_name().compare("audioPlayerOnRefresh") == 0) {
-        for (const auto& [id, player] : audioPlayers) {
-            AudioPlayer::OnRefresh(player.get());
-        }
+void AudioplayersElinuxPlugin::HandleGlobalMethodCall(const flutter::MethodCall<flutter::EncodableValue>& method_call, std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {
+    if (method_call.method_name().compare(kAudioplayersGlobalChannelApiLoop) == 0) {
+        HandleGlobalLoopCall(method_call.arguments(), std::move(result));
 
-        result->Success(flutter::EncodableValue(1));
+    } else if (method_call.method_name().compare(kAudioplayersGlobalChannelApiChangeLogLevel) == 0) {
+        HandleGlobalChangeLogLevelCall(method_call.arguments(), std::move(result));
+
+    } else {
+        result->NotImplemented();
+    }
+}
+
+void AudioplayersElinuxPlugin::HandleGlobalLoopCall(const flutter::EncodableValue* message, std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {
+    g_main_context_iteration(g_main_loop_get_context(loop), FALSE);
+    result->Success(flutter::EncodableValue(1));
+}
+
+void AudioplayersElinuxPlugin::HandleGlobalChangeLogLevelCall(const flutter::EncodableValue* message, std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {
+    std::string level = get_args_value<std::string>(message, "value", "");
+
+    if (level.empty()) {
+        Logger::Error("Null value received on changeLogLevel");
+        result->Success(flutter::EncodableValue(0));
         return;
     }
 
+    if (level.compare("LogLevel.info") == 0) {
+        Logger::logLevel = LogLevel::Info;
+    } else if (level.compare("LogLevel.error") == 0) {
+        Logger::logLevel = LogLevel::Error;
+    } else if (level.compare("LogLevel.none") == 0) {
+        Logger::logLevel = LogLevel::None;
+    } else {
+        Logger::Error("Invalid value received on changeLogLevel");
+        result->Success(flutter::EncodableValue(0));
+        return;
+    }
+
+    result->Success(flutter::EncodableValue(1));
+}
+
+void AudioplayersElinuxPlugin::HandleMethodCall(const flutter::MethodCall<flutter::EncodableValue>& method_call, std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {
     std::string playerId = get_args_value<std::string>(method_call.arguments(), "playerId", "");
 
     if (playerId.empty()) {
